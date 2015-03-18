@@ -1,0 +1,18 @@
+//
+//  BSLocalHistoryListViewController.h
+//  BaiSi
+//
+//  Created by tjs on 13-9-11.
+//  Copyright (c) 2013年 tjs. All rights reserved.
+//
+
+#import "BSBaseTableViewController.h"
+#import "BSImageCell.h"
+#import "BSImageLoader.h"
+#import "DMAdView.h"
+
+@interface BSLocalHistoryListViewController : BSBaseTableViewController <BSImageCellDelegate, BSImageLoaderDelegate, UIAlertViewDelegate, DMAdViewDelegate>
+
+- (id)initWithArray:(NSArray *)array index:(int)index;
+
+@end

@@ -1,0 +1,306 @@
+//
+//  BSSettingsViewController.m
+//  BaiSi
+//
+//  Created by quentin on 13-9-10.
+//  Copyright (c) 2013年 tjs. All rights reserved.
+//
+
+#import "BSSettingsViewController.h"
+#import "UIViewController+MMDrawerController.h"
+#import "BSSettings.h"
+#import "BSAboutViewController.h"
+#import "BSNavigationViewController.h"
+#import "BSMainViewController.h"
+#import "BSDownloadHistoryViewController.h"
+#import "BSSystem.h"
+#import "UMFeedback.h"
+#import "BSPathManager.h"
+#import "BSHelpViewController.h"
+
+#define  kAlertClearHistory  100
+#define  kAlertClearImageCache  101
+
+#define  kHeaderHeight  25
+#define  kRowHeight  25
+
+NSString *kNeedRefreshNotification = @"kNeedRefreshNotification";
+
+@interface BSSettingsViewController ()
+
+@property   (nonatomic, retain)  NSArray  *datasArray;
+
+@end
+
+@implementation BSSettingsViewController
+@synthesize datasArray;
+
+
+- (void)dealloc
+{
+    self.datasArray = nil;
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [super dealloc];
+}
+
+- (id)initWithStyle:(UITableViewStyle)style
+{
+    self = [super initWithStyle:style];
+    if (self) {
+        // Custom initialization
+        
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(needRefresh) name:kNeedRefreshNotification object:nil];
+    }
+    return self;
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+
+    // Uncomment the following line to preserve selection between presentations.
+    // self.clearsSelectionOnViewWillAppear = NO;
+ 
+    // Uncomment the following line to display an Edit button in the navigation bar for this view controller.
+    // self.navigationItem.rightBarButtonItem = self.editButtonItem;
+    
+    self.tableView.showsHorizontalScrollIndicator = NO;
+    self.tableView.showsVerticalScrollIndicator = NO;
+    
+    self.datasArray = [NSArray arrayWithArray:[[BSSettings sharedInstance] loadDataWithPlistName:kSettingsPlistName]];
+
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    [BSSystem trackBeginView:@"设置"];
+}
+
+- (void)viewDidDisappear:(BOOL)animated
+{
+    [super viewDidDisappear:animated];
+    [BSSystem trackEndView:@"设置"];
+}
+
+- (void)needRefresh
+{
+    [self.tableView reloadData];
+}
+
+- (void)didReceiveMemoryWarning
+{
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+#pragma mark - Table view data source
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section
+{
+    NSArray  *array = [self.datasArray objectAtIndex:section];
+    NSDictionary  *dictionary = [array objectAtIndex:0];
+    
+    UIView  *bgView = [[[UIView alloc] init] autorelease];
+    bgView.backgroundColor = [UIColor colorWithPatternImage:[UIImage imageNamed:@"bar_background"]];
+    bgView.frame = CGRectMake(0, 0, self.view.frame.size.width, kHeaderHeight);
+    
+    UILabel  *headerLabel = [[[UILabel alloc] init] autorelease];
+    headerLabel.backgroundColor = [UIColor clearColor];
+    headerLabel.text = [dictionary objectForKey:kItemHeader];
+    headerLabel.font = [UIFont boldSystemFontOfSize:14];
+    [headerLabel sizeToFit];
+    
+    CGFloat y = (kHeaderHeight - headerLabel.frame.size.height)/2;
+    
+    headerLabel.frame = CGRectMake(15, y, headerLabel.frame.size.width, headerLabel.frame.size.height);
+    [bgView addSubview:headerLabel];
+    
+    return bgView;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
+{
+    return [self.datasArray count];
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    // Return the number of rows in the section.
+    return [[self.datasArray objectAtIndex:section] count];
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    static NSString *CellIdentifier = @"Cell";
+    UITableViewCell *cell = nil;
+    if (cell == nil) {
+        cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:CellIdentifier] autorelease];
+    }
+    
+    NSArray  *array = [self.datasArray objectAtIndex:indexPath.section];
+    NSDictionary  *dictionary = [array objectAtIndex:indexPath.row];
+    NSString  *itemKey = [[BSSettings sharedInstance].currentItem objectForKey:kItemKey];
+    if ([[dictionary objectForKey:kItemKey] isEqualToString:itemKey]) {
+        cell.textLabel.textColor = [UIColor redColor];
+    }
+    
+    if ([[dictionary objectForKey:kItemKey] isEqualToString:@"onlyWifi"]) {//仅wifi情况下载
+        if ([BSSettings sharedInstance].onlyWifDownload) {
+            cell.accessoryType = UITableViewCellAccessoryCheckmark;
+        }
+        else {
+            cell.accessoryType = UITableViewCellAccessoryNone;
+        }
+    } else if ([[dictionary objectForKey:kItemKey] isEqualToString:@"wifiAnd3G"]) {//wifi和3g下载
+        if ([BSSettings sharedInstance].onlyWifDownload) {
+            cell.accessoryType = UITableViewCellAccessoryNone;
+        }
+        else {
+            cell.accessoryType = UITableViewCellAccessoryCheckmark;
+        }
+    } else if ([[dictionary objectForKey:kItemKey] isEqualToString:@"downloadHistory"]) {//下载历史
+
+        if ([[BSPathManager arrayFormDatapath] count] == 0) {
+            cell.textLabel.textColor = [UIColor grayColor];
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        }
+        else {
+            cell.selectionStyle = UITableViewCellSelectionStyleBlue;
+        }
+    }
+    
+    cell.textLabel.font = [UIFont systemFontOfSize:14];
+    cell.textLabel.text = [dictionary objectForKey:kItemName];
+    return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    return kRowHeight;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section
+{
+    return kHeaderHeight;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+    NSArray  *array = [self.datasArray objectAtIndex:indexPath.section];
+    NSDictionary  *dictionary = [array objectAtIndex:indexPath.row];
+    NSString  *itemKey = [dictionary objectForKey:kItemKey];
+    NSString  *itemHeader = [dictionary objectForKey:kItemHeader];
+    
+    if ([itemHeader isEqualToString:kCategoryImage] || [itemHeader isEqualToString:kCategoryVideo]) {
+        
+        self.mm_drawerController.closeDrawerGestureModeMask ^= MMCloseDrawerGestureModePanningDrawerView;
+        [self.mm_drawerController closeDrawerAnimated:YES completion:^(BOOL finished){
+            
+            if (itemKey != [[BSSettings sharedInstance].currentItem objectForKey:kItemKey]) {
+                [BSSettings sharedInstance].currentItem = [NSDictionary dictionaryWithDictionary:dictionary];
+                
+                NSArray  *views = self.mm_drawerController.centerViewController.childViewControllers;
+                if ([views count] <= 0) {
+                    Log(@"view is null");
+                    return;
+                }
+                
+                BSMainViewController  *mainViewCtrl = [views objectAtIndex:0];
+                
+                [mainViewCtrl changeCategory];
+            }
+            
+            [self.tableView reloadData];
+        }];
+        
+    } else if ([itemHeader isEqualToString:@"关于"]) {
+        
+        if ([itemKey isEqualToString:@"about"]) {//about
+            
+            BSAboutViewController  *viewCtrl = [[[BSAboutViewController alloc] init] autorelease];
+            
+            BSNavigationViewController  *navigationCtrl = [[[BSNavigationViewController alloc] initWithRootViewController:viewCtrl] autorelease];
+            
+            [self presentModalViewController:navigationCtrl animated:YES];
+
+        } else if ([itemKey isEqualToString:@"feedback"]) {
+            
+            [UMFeedback showFeedback:self withAppkey:kUmengAppKey];
+            
+        } else if ([itemKey isEqualToString:@"help"]) {
+            
+            BSHelpViewController  *viewCtrl = [[[BSHelpViewController alloc] init] autorelease];
+            BSNavigationViewController *navigationCtrl = [[[BSNavigationViewController alloc] initWithRootViewController:viewCtrl] autorelease];
+            [self presentModalViewController:navigationCtrl animated:YES];
+        }
+        
+    } else if ([itemHeader isEqualToString:@"下载管理"]) {
+        
+        
+        if ([itemKey isEqualToString:@"downloadHistory"]) {//download history
+            
+            if ([[BSPathManager arrayFormDatapath] count] == 0) {
+                return;
+            }
+            
+            BSDownloadHistoryViewController  *viewCtrl = [[[BSDownloadHistoryViewController alloc] init] autorelease];
+            
+            BSNavigationViewController  *navigationCtrl = [[[BSNavigationViewController alloc] initWithRootViewController:viewCtrl] autorelease];
+            
+            [self presentModalViewController:navigationCtrl animated:YES];
+            
+        } else if ([itemKey isEqualToString:@"clearHistory"]) {
+            UIAlertView  *alertView = [[UIAlertView alloc] initWithTitle:@"警告" message:@"删除全部下载历史" delegate:self cancelButtonTitle:@"取消" otherButtonTitles:@"确定", nil];
+            alertView.tag = kAlertClearHistory;
+            [alertView show];
+            [alertView release];
+        }
+        
+    } else if ([itemHeader isEqualToString:@"下载图片"]) {
+        
+        if ([itemKey isEqualToString:@"onlyWifi"]) {
+            
+            [BSSettings sharedInstance].onlyWifDownload = YES;
+        } else if ([itemKey isEqualToString:@"wifiAnd3G"]) {
+            [BSSettings sharedInstance].onlyWifDownload = NO;
+        }
+        [self.tableView reloadData];
+    } else if ([itemHeader isEqualToString:@"清空缓存"]) {
+        
+        if ([itemKey isEqualToString:@"clearImageCache"]) {
+            
+            UIAlertView  *alertView = [[UIAlertView alloc] initWithTitle:@"警告" message:@"清空全部缓存图片" delegate:self cancelButtonTitle:@"取消" otherButtonTitles:@"确定", nil];
+            alertView.tag = kAlertClearImageCache;
+            [alertView show];
+            [alertView release];
+            
+        }
+        
+    }
+}
+
+#pragma mark - alertview delegate
+
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex
+{
+    if (buttonIndex == alertView.cancelButtonIndex) {
+        return;
+    }
+   
+    switch (alertView.tag) {
+        case kAlertClearHistory:
+            [BSPathManager clearAllLocalHistory];
+             [[NSNotificationCenter defaultCenter] postNotificationName:kNeedRefreshNotification object:nil];
+            break;
+        case kAlertClearImageCache:
+            [BSPathManager clearAllImageCache];
+            break;
+        default:
+            break;
+    }
+}
+
+@end

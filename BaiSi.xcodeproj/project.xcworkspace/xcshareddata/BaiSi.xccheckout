@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IDESourceControlProjectFavoriteDictionaryKey</key>
+	<false/>
+	<key>IDESourceControlProjectIdentifier</key>
+	<string>92601F26-31E4-4D15-A574-0D39F6E50D2C</string>
+	<key>IDESourceControlProjectName</key>
+	<string>BaiSi</string>
+	<key>IDESourceControlProjectOriginsDictionary</key>
+	<dict>
+		<key>624dda9e-375d-4056-a603-2695e881ba24</key>
+		<string>https://riouxsvn.com/svn/baisi</string>
+	</dict>
+	<key>IDESourceControlProjectPath</key>
+	<string>BaiSi.xcodeproj</string>
+	<key>IDESourceControlProjectRelativeInstallPathDictionary</key>
+	<dict>
+		<key>624dda9e-375d-4056-a603-2695e881ba24</key>
+		<string>../..</string>
+	</dict>
+	<key>IDESourceControlProjectVersion</key>
+	<integer>111</integer>
+	<key>IDESourceControlProjectWCCIdentifier</key>
+	<string>624dda9e-375d-4056-a603-2695e881ba24</string>
+	<key>IDESourceControlProjectWCConfigurations</key>
+	<array>
+		<dict>
+			<key>IDESourceControlRepositoryExtensionIdentifierKey</key>
+			<string>public.vcs.subversion</string>
+			<key>IDESourceControlWCCIdentifierKey</key>
+			<string>624dda9e-375d-4056-a603-2695e881ba24</string>
+			<key>IDESourceControlWCCName</key>
+			<string>baisi</string>
+		</dict>
+	</array>
+</dict>
+</plist>

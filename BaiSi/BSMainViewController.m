@@ -1,0 +1,621 @@
+//
+//  BSMainViewController.m
+//  BaiSi
+//
+//  Created by tjs on 13-9-8.
+//  Copyright (c) 2013年 tjs. All rights reserved.
+//
+
+#import "BSMainViewController.h"
+#import "BSImageItem.h"
+#import "BSHttpRequestConnect.h"
+#import "BSPathManager.h"
+#import "UIImage+Util.h"
+#import "MBProgressHUD.h"
+#import "UIViewController+MMDrawerController.h"
+#import "BSSettings.h"
+#import "BSSettingsViewController.h"
+#import "BSZoomScrollView.h"
+#import "BSSystem.h"
+
+#define  kMoreHeight  35
+
+//save data
+#define  kSaveDataVersion  @"1.0"
+#define  kSaveDataKey   @"data"
+#define  kSaveDataMaxPage  3
+
+NSString  *kChangePageCountNotification = @"changePageCountNotification";
+
+@interface BSMainViewController ()
+
+{
+
+    int          _currentPage;
+    int          _loadNewDataCount;
+    
+    UIButton     *_moreButton;
+    BOOL         _loading;
+
+}
+
+@property (nonatomic, retain)    BSRequestConnect  *request;
+@property (nonatomic, retain)    NSMutableArray  *dataArray;
+@property (nonatomic, retain)    BSImageLoader  *imageLoader;
+@property (nonatomic, retain)    EGORefreshTableHeaderView   *egoHeaderView;
+@property (nonatomic, retain)    BSZoomScrollView  *showImageView;
+@end
+
+@implementation BSMainViewController
+@synthesize request;
+@synthesize dataArray;
+@synthesize imageLoader;
+@synthesize egoHeaderView;
+@synthesize showImageView;
+
+- (void)setRequest:(BSRequestConnect *)aRequest
+{
+    [aRequest retain];
+    
+    [request clearDelegateAndCancel];
+    [request release];
+    
+    request = aRequest;
+}
+
+- (void)dealloc
+{
+    self.request = nil;
+    self.dataArray = nil;
+    
+    [self.imageLoader clearCacheDelegate];
+    self.imageLoader = nil;
+    
+    self.egoHeaderView = nil;
+    
+    self.egoHeaderView.delegate = nil;
+    self.egoHeaderView = nil;
+    
+    self.showImageView = nil;
+
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    
+    [super dealloc];
+}
+
+- (id)initWithNibName:(NSString *)nibNameOrNil bundle:(NSBundle *)nibBundleOrNil
+{
+    self = [super initWithNibName:nibNameOrNil bundle:nibBundleOrNil];
+    if (self) {
+        // Custom initialization
+        
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(appBecomeActiveNotification) name:UIApplicationDidBecomeActiveNotification object:nil];
+    }
+    return self;
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+	// Do any additional setup after loading the view.
+    
+    //返回
+    UIButton *leftButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    [leftButton setImage:[UIImage imageNamed:@"button_leftNavigation_n"] forState:UIControlStateNormal];
+    [leftButton setImage:[UIImage imageNamed:@"button_leftNavigation_h"] forState:UIControlStateHighlighted];
+    [leftButton sizeToFit];
+    SET_NAVIGATION_BAR_MAKE_LARGE(leftButton);
+    [leftButton addTarget:self action:@selector(openSettingView:) forControlEvents:UIControlEventTouchUpInside];
+    
+    UIBarButtonItem  *leftButtonItem = [[[UIBarButtonItem alloc] initWithCustomView:leftButton] autorelease];
+    self.navigationItem.leftBarButtonItem = leftButtonItem;
+    
+    
+    //下载
+    ADD_NAVIGATION_RIGHT_BUTTON(showTagsViewCtrl:, @"书签");
+    
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    
+    //初始化
+    {
+        self.dataArray = [NSMutableArray array];
+        
+        self.imageLoader = [[[BSImageLoader alloc] init] autorelease];
+        self.imageLoader.delegate = self;
+        
+    }
+    
+    //加载更多
+    {
+      
+        _moreButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        _moreButton.titleLabel.font = [UIFont systemFontOfSize:13];
+        [_moreButton setTitleColor:[UIColor grayColor] forState:UIControlStateNormal];
+        _moreButton.frame = CGRectMake(0, 0, self.view.frame.size.width, kMoreHeight);
+        _moreButton.hidden = YES;
+        [self.view addSubview:_moreButton];
+        
+    }
+    
+    //下拉刷新
+    {
+      
+        EGORefreshTableHeaderView  *egoRefreshView = [[[EGORefreshTableHeaderView alloc] initWithFrame:CGRectMake(0, -self.view.frame.size.height, self.view.frame.size.width, self.view.frame.size.height)] autorelease];
+        egoRefreshView.backgroundColor = [UIColor clearColor];
+        egoRefreshView.delegate = self;
+        [self.view addSubview:egoRefreshView];
+        [egoHeaderView refreshLastUpdatedDate];
+        
+        self.egoHeaderView = egoRefreshView;
+        
+    }
+
+    //show image view
+    {
+        
+        self.showImageView = [[[BSZoomScrollView alloc] init] autorelease];
+        self.showImageView.frame = [UIScreen mainScreen].bounds;
+        self.showImageView.backgroundColor = [UIColor blackColor];
+  
+    }
+    
+    //ad view
+    {
+        [self addBannerView];
+    }
+
+    [self loadData];
+    
+    [self performSelector:@selector(changeCategory) withObject:nil afterDelay:0.3f];
+
+}
+
+- (void)viewDidAppear:(BOOL)animated
+{
+    [super viewDidAppear:animated];
+    [BSSystem trackBeginView:@"主页"];
+
+}
+
+- (void)viewDidDisappear:(BOOL)animated
+{
+    [super viewDidDisappear:animated];
+    [BSSystem trackEndView:@"主页"];
+}
+
+- (void)appBecomeActiveNotification
+{
+    
+    if ([[BSSettings sharedInstance] showInsertScreenAd]) {
+
+        
+    }
+}
+
+
+#pragma mark - bannerview
+
+- (void)addBannerView
+{
+    
+}
+
+#pragma mark - choose page
+
+- (void)choosePage
+{
+    
+    self.tableView.contentOffset = CGPointMake(0, -65.0f);
+    [self.egoHeaderView egoRefreshScrollViewDataSourceDidFinishedLoading:self.tableView];
+    
+    _currentPage = [BSSettings sharedInstance].currentPageForItemKey;
+    
+    NSString  *itemHeader = [[BSSettings sharedInstance].currentItem objectForKey:kItemHeader];
+    
+    if ([itemHeader isEqualToString:kCategoryImage]) {
+        
+        [self requestImageDataForPage:_currentPage];
+        
+    }
+}
+
+#pragma mark - changeCategory
+- (void)changeCategory
+{
+    
+    SET_SCROLL_NAVIGATION_TITLE([[BSSettings sharedInstance].currentItem objectForKey:kItemName]);
+    
+    self.tableView.contentOffset = CGPointMake(0, -65.0f);
+    [self.egoHeaderView egoRefreshScrollViewDataSourceDidFinishedLoading:self.tableView];
+    
+    _currentPage = [BSSettings sharedInstance].currentPageForItemKey;
+    
+    
+    NSString  *itemHeader = [[BSSettings sharedInstance].currentItem objectForKey:kItemHeader];
+    
+    if ([itemHeader isEqualToString:kCategoryImage]) {
+     
+        [self requestImageDataForPage:_currentPage];
+        
+    }
+}
+
+#pragma mark - show/hide image view
+
+- (void)showBigImageView:(id)sender
+{
+    [UIApplication sharedApplication].statusBarHidden = YES;
+    
+    [[UIApplication sharedApplication].keyWindow addSubview:showImageView];
+    
+    BSImageCell  *cell = (BSImageCell *)sender;
+    
+    BSImageItem  *item = cell.items;
+    
+    self.showImageView.item = item;
+    
+    if (item.is_gif) {
+        [self startLoadImageUrl:item.image0URL indexPath:nil showBigImage:YES];
+    }
+}
+
+#pragma mark -----
+
+- (void)loadMoreView
+{
+    _moreButton.hidden = NO;
+    
+    [_moreButton setTitle:@"更多" forState:UIControlStateNormal];
+    [_moreButton addTarget:self action:@selector(loadingMoreView) forControlEvents:UIControlEventTouchUpInside];
+    
+    CGSize size = self.tableView.contentSize;
+    size.height += kMoreHeight;
+    self.tableView.contentSize = size;
+    
+    CGRect  rect = _moreButton.frame;
+    rect.origin.y = self.tableView.contentSize.height - kMoreHeight;
+    _moreButton.frame = rect;
+    
+    [self.egoHeaderView egoRefreshScrollViewDataSourceDidFinishedLoading:self.tableView];
+    
+}
+
+- (void)loadingMoreView
+{
+    [_moreButton setTitle:@"加载中" forState:UIControlStateNormal];
+    [_moreButton removeTarget:self action:@selector(loadingMoreView) forControlEvents:UIControlEventTouchUpInside];
+    _currentPage ++;
+    [self requestImageDataForPage:_currentPage];
+}
+
+#pragma mark - open settings view
+
+- (void)openSettingView:(id)sender
+{
+    [self.mm_drawerController toggleDrawerSide:MMDrawerSideLeft animated:YES completion:^(BOOL finished) {
+        
+    }];
+}
+
+- (void)showTagsViewCtrl:(id)sender
+{
+    [self.mm_drawerController toggleDrawerSide:MMDrawerSideRight animated:YES completion:^(BOOL finished) {
+        
+    }];
+}
+
+#pragma mark - request image data
+- (void)requestImageDataForPage:(int)page
+{
+    
+    MBProgressHUD *hud = [MBProgressHUD showHUDAddedTo:[UIApplication sharedApplication].keyWindow animated:YES];
+    hud.labelText = NSLocalizedString(@"数据加载中...", nil);
+    
+    NSString *server = [BSSettings sharedInstance].currentServer;
+    
+    NSString  *url = [NSString stringWithFormat:@"%@&per=%d&page=%d",server,kPageSize,page];
+    
+    BSRequestConnect  *aRequest = [BSRequestConnect requestWithURL:[NSURL URLWithString:url]];
+    aRequest.delegate = self;
+    [aRequest startAsynchronous];
+    self.request = aRequest;
+}
+
+- (void)BSRequestConnect:(BSRequestConnect *)aRequest fail:(NSError *)error
+{
+    [self reloadView];
+    
+    MBProgressHUD *hud = [MBProgressHUD showHUDAddedTo:[UIApplication sharedApplication].keyWindow animated:YES];
+    hud.mode = MBProgressHUDModeText;
+    hud.labelText = NSLocalizedString(@"数据加载失败，请重试!", nil);
+    [hud hide:YES afterDelay:2];
+}
+
+- (void)BSRequestConnect:(BSRequestConnect *)aRequest
+{
+    Log(@"%@",aRequest.requestDictionary);
+    
+    NSDictionary  *dict = aRequest.requestDictionary;
+    
+    NSDictionary  *info = [dict objectForKey:@"info"];
+    
+    int maxCount = [[info objectForKey:@"count"] intValue];
+    
+    _loadNewDataCount = maxCount - [BSSettings sharedInstance].currentMaxCountForItemKey;
+    
+    [[BSSettings sharedInstance] setCurrentMaxCountForItemKey:maxCount];
+    
+    if (_currentPage == kFirstPage || _currentPage == [BSSettings sharedInstance].currentPageForItemKey) {
+        
+        [[BSSettings sharedInstance] setCurrentPageForItemKey:_currentPage];
+        [self.dataArray removeAllObjects];
+    }
+    
+    NSArray  *list = [dict objectForKey:@"list"];
+
+    for (NSDictionary *dict in list) {
+        BSImageItem  *item = [[[BSImageItem alloc] init] autorelease];
+        [item updateDataFromDictionary:dict];
+        [self.dataArray addObject:item];
+    }
+
+    [self saveData];
+    
+    [self reloadView];
+}
+
+- (void)reloadView
+{    
+    if (_currentPage == kFirstPage) {
+        
+        if (_loadNewDataCount <= 0) {
+            [BSSystem showStatusBarFinishMessage:NSLocalizedString(@"当前未有更新", nil)];
+        }
+        else {
+            [BSSystem showStatusBarFinishMessage:[NSString stringWithFormat:@"当前更新%d条",_loadNewDataCount]];
+        }
+    }
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:kChangePageCountNotification object:nil];
+    
+    [MBProgressHUD hideAllHUDsForView:[UIApplication sharedApplication].keyWindow animated:YES];
+    
+    [self.tableView reloadData];
+    [self loadMoreView];
+    
+}
+
+#pragma mark - save data
+
+- (void)saveData
+{
+    NSDictionary  *info = [NSDictionary dictionaryWithObjectsAndKeys:self.dataArray, kSaveDataKey, kSaveDataVersion, @"version", nil];
+    
+    [NSKeyedArchiver  archiveRootObject:info toFile:[BSPathManager pathForUpdateData]];
+}
+
+- (void)loadData
+{
+    NSDictionary  *info = [NSKeyedUnarchiver unarchiveObjectWithFile:[BSPathManager pathForUpdateData]];
+    if ([[info objectForKey:@"version"] isEqualToString:kSaveDataVersion]) {
+        self.dataArray = [info objectForKey:kSaveDataKey];
+        
+    } else {
+        [BSPathManager deleteFileForPath:[BSPathManager pathForUpdateData]];
+    }
+    
+    [self reloadView];
+
+}
+
+#pragma mark - ego delegate
+
+- (BOOL)egoRefreshTableHeaderDataSourceIsLoading:(EGORefreshTableHeaderView *)view
+{
+    return _loading;
+}
+
+- (NSDate *)egoRefreshTableHeaderDataSourceLastUpdated:(EGORefreshTableHeaderView *)view
+{
+    return [NSDate date];
+}
+
+- (void)egoRefreshTableHeaderDidTriggerRefresh:(EGORefreshTableHeaderView *)view
+{
+    _currentPage = kFirstPage;
+    [self requestImageDataForPage:_currentPage];
+}
+
+- (NSString *)egoRefreshTableHeaderLastUpdateDateKey
+{
+    return [self.egoHeaderView description];
+}
+
+#pragma mark - tabaleview delegate
+
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
+{
+    return [self.dataArray count];;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    NSString  *itemHeader = [[BSSettings sharedInstance].currentItem objectForKey:kItemHeader];
+    
+    if ([itemHeader isEqualToString:kCategoryImage]) {
+        
+        static  NSString  *cellIdentifier = @"image cell";
+        
+        BSImageCell  *cell = nil;
+        if (cell == nil) {
+            cell = [[[BSImageCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellIdentifier] autorelease];
+            cell.delegate = self;
+        }
+        
+        BSImageItem  *items = [self.dataArray objectAtIndex:indexPath.row];
+        
+        cell.items = items;
+        
+        if (items.image) {
+            
+            cell.imageView.image = items.image;
+            
+        }
+        else {
+            
+            UIImage  *image = [UIImage imageWithContentsOfFile:[BSPathManager imageCacheForURL:items.showImageURL]];
+            if (image) {
+                items.image = image;
+                cell.imageView.image = items.image;
+            }
+            else {
+                if (!tableView.dragging && !tableView.decelerating) {
+                    [self startLoadImageUrl:items.showImageURL indexPath:indexPath showBigImage:NO];
+                }
+            }
+        }
+        return cell;
+        
+    }
+    return nil;
+    
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
+{
+    if (indexPath.row < [self.dataArray count]) {
+        
+        NSString *itemHeader = [[BSSettings sharedInstance].currentItem objectForKey:kItemHeader];
+        
+        if ([itemHeader isEqualToString:kCategoryImage]) {
+            BSImageItem  *item = [self.dataArray objectAtIndex:indexPath.row];
+            
+            return [BSImageCell heightForItem:item];
+        }
+    }
+    return 0;
+}
+
+#pragma mark - BSImageCell delegate
+
+- (void)onClickBSImageCell:(BSImageCell *)cell
+{
+    [self showBigImageView:cell];
+}
+
+#pragma mark - scrollview
+- (void)scrollViewDidScroll:(UIScrollView *)scrollView
+{
+    CGFloat  offY = scrollView.contentOffset.y + self.view.frame.size.height;
+    if (offY > scrollView.contentSize.height + 65) {
+        _loading = YES;
+    }
+    
+    Log(@"log offy %f",offY);
+}
+
+- (void)scrollViewDidEndDragging:(UIScrollView *)scrollView willDecelerate:(BOOL)decelerate
+{
+    if (!decelerate) {
+        [self scrollViewEnd:scrollView];
+    }
+    [self.egoHeaderView egoRefreshScrollViewDidEndDragging:scrollView];
+}
+
+- (void)scrollViewDidEndDecelerating:(UIScrollView *)scrollView
+{
+    [self scrollViewEnd:scrollView];
+    [self.egoHeaderView egoRefreshScrollViewDidEndDragging:scrollView];
+}
+
+- (void)scrollViewEnd:(UIScrollView *)scrollView
+{
+    NSArray  *array = [self.tableView indexPathsForVisibleRows];
+    for (NSIndexPath *indexPath in array) {
+        
+        int row = indexPath.row;
+        
+        BSImageItem  *item = [self.dataArray objectAtIndex:row];
+        
+        [self startLoadImageUrl:item.showImageURL indexPath:indexPath showBigImage:NO];
+    }
+    
+    if (_loading && scrollView.contentSize.height + 3 >= scrollView.contentOffset.y + self.view.frame.size.height) {
+       _loading = NO;
+        [self loadingMoreView];
+   }
+}
+
+
+#pragma mark - loadimage
+- (void)startLoadImageUrl:(NSURL *)url indexPath:(NSIndexPath *)indexPath showBigImage:(BOOL)showBig
+{
+    NSDictionary  *info = [NSDictionary dictionaryWithObjectsAndKeys:indexPath, @"indexPath", [NSNumber numberWithBool:showBig], @"showBig", nil];
+    if (indexPath == nil) {
+        info = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithBool:showBig], @"showBig", nil];
+    }
+    
+    [self.imageLoader loadImageWithURL:url info:info];
+}
+
+
+#pragma mark - imageLoader delegate
+
+- (void)showImage:(UIImage *)image info:(NSDictionary *)info
+{
+    NSIndexPath  *indexPath = [info objectForKey:@"indexPath"];
+    
+    if (indexPath) {
+        BSImageItem  *item = [self.dataArray objectAtIndex:indexPath.row];
+        
+        item.image = image;
+        
+        BSImageCell  *cell = (BSImageCell *)[self.tableView cellForRowAtIndexPath:indexPath];
+        cell.imageView.image = image;
+    }
+    else {
+        
+        BOOL  showBigImage = [[info objectForKey:@"showBig"] boolValue];
+        
+        if (showBigImage) {
+            [showImageView refreshUI];
+        }
+    }
+}
+
+
+- (void)BSImageLoader:(BSImageLoader *)aImageLoader existImage:(UIImage *)image info:(NSDictionary *)info
+{
+    [self showImage:image info:info];
+}
+
+- (void)BSImageLoader:(BSImageLoader *)imageLoader image:(UIImage *)image info:(NSDictionary *)info
+{
+    [self showImage:image info:info];
+
+}
+
+- (void)BSImageLoader:(BSImageLoader *)imageLoader error:(NSError *)error info:(NSDictionary *)info
+{
+    NSIndexPath  *indexPath = [info objectForKey:@"indexPath"];
+    
+    if (indexPath == nil) {
+        
+    }
+}
+
+
+- (void)didReceiveMemoryWarning
+{
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+@end
